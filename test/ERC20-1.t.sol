@@ -16,7 +16,7 @@ contract UpsideTokenTest is Test {
         upside_token.transfer(alice, 50 ether);
         upside_token.transfer(bob, 50 ether);
     }
-    
+
     function testFailPauseNotOwner() public {
         vm.prank(alice);
         upside_token.pause();
