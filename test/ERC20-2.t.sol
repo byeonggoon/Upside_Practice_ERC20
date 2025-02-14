@@ -29,18 +29,17 @@ contract UpsideTokenTest is Test {
         upside_token.transfer(bob, 50 ether);
     }
 
-    /**    
     function testPermit() public {
         bytes32 structHash = keccak256(
             abi.encode(
                 keccak256(
                     "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
                 ),
-                alice,
-                address(this),
-                10 ether,
-                0,
-                1 days
+                alice, // owner
+                address(this), // spender
+                10 ether, // value
+                0, // nonce
+                1 days // deadline
             )
         );
         bytes32 hash = upside_token._toTypedDataHash(structHash);
@@ -48,7 +47,6 @@ contract UpsideTokenTest is Test {
 
         assertEq(upside_token.nonces(alice), 0);
         upside_token.permit(alice, address(this), 10 ether, 1 days, v, r, s);
-
         assertEq(upside_token.allowance(alice, address(this)), 10 ether);
         assertEq(upside_token.nonces(alice), 1);
     }
@@ -126,12 +124,11 @@ contract UpsideTokenTest is Test {
             )
         );
         bytes32 digest = upside_token._toTypedDataHash(hash);
+
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(alicePK, digest);
 
         upside_token.permit(alice, address(this), 10 ether, 1 days, v, r, s);
         vm.expectRevert("INVALID_SIGNER");
         upside_token.permit(alice, address(this), 10 ether, 1 days, v, r, s);
     }
-
-     */
 }

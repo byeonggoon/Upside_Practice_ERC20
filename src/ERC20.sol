@@ -2,6 +2,8 @@
 pragma solidity ^0.8.0;
 
 import {Pausable} from "./utils/Pausable.sol";
+import {ECDSA} from "./utils/ECDSA.sol";
+import "forge-std/console.sol";
 
 contract ERC20 is Pausable {
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -26,22 +28,44 @@ contract ERC20 is Pausable {
 
     error ERC20InvalidApprover(address approver);
     error ERC20InvalidSpender(address spender);
+    error InvalidAccountNonce(address account, uint256 currentNonce);
+    error ERC2612ExpireedSignature(uint256 deadline);
+    error ERC2612InvalidSigner(address signer, address owner);
 
     mapping(address account => uint256) private balances;
+    mapping(address account => uint256) private _nonces;
     mapping(address account => mapping(address spender => uint256))
         private _allowance;
 
-    uint256 private totalSupply;
     string private name;
     string private symbol;
+    uint256 private totalSupply;
     address public controller;
     bool private _paused;
+    bytes32 private immutable _hashedName;
+    bytes32 private immutable _cachedDomainSeparator;
+    uint256 private immutable _cachedChainId;
+    address private immutable _cachedThis;
+    bytes32 private constant TYPE_HASH =
+        keccak256(
+            "EIP712Domain(string name,uint256 chainId,address verifyingContract)"
+        );
+    bytes32 private constant PERMIT_TYPEHASH =
+        keccak256(
+            "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+        );
 
     constructor(string memory _name, string memory _symbol) {
         name = _name;
         symbol = _symbol;
         controller = msg.sender;
         _mint(msg.sender, 100 ether);
+        _cachedChainId = block.chainid;
+        _cachedDomainSeparator = keccak256(
+            abi.encode(TYPE_HASH, _hashedName, block.chainid, address(this))
+        ); //_buildDomainSeparator();
+        _cachedThis = address(this);
+        _hashedName = keccak256(bytes(_name));
     }
 
     function transfer(
@@ -66,7 +90,7 @@ contract ERC20 is Pausable {
 
     function approve(address spender, uint256 value) public returns (bool) {
         address owner = _msgSender();
-        _approve(owner, spender, value);
+        _approve(owner, spender, value, true);
         return true;
     }
 
@@ -77,9 +101,68 @@ contract ERC20 is Pausable {
         return _allowance[owner][spender];
     }
 
+    function nonces(address owner) public view returns (uint256) {
+        return _nonces[owner];
+    }
+
     function pause() public {
         require(msg.sender == controller, "NO PERMISSION");
         _pause();
+    }
+
+    function permit(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public {
+        if (block.timestamp > deadline) {
+            revert ERC2612ExpireedSignature(deadline);
+        }
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                PERMIT_TYPEHASH,
+                owner,
+                spender,
+                value,
+                _nonces[owner]++,
+                deadline
+            )
+        );
+
+        bytes32 hash = _toTypedDataHash(structHash);
+
+        address signer = ECDSA.recover(hash, v, r, s);
+        if (signer != owner) {
+            revert("INVALID_SIGNER");
+        }
+
+        _approve(owner, spender, value, true);
+    }
+
+    function _toTypedDataHash(
+        bytes32 structHash
+    ) public view returns (bytes32 digest) {
+        bytes32 domainSeparator = _cachedDomainSeparator;
+
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, hex"19_01")
+            mstore(add(ptr, 0x02), domainSeparator)
+            mstore(add(ptr, 0x22), structHash)
+            digest := keccak256(ptr, 0x42)
+        }
+    }
+
+    function _buildDomainSeparator() private view returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(TYPE_HASH, _hashedName, block.chainid, address(this))
+            );
     }
 
     function _mint(address account, uint256 value) internal {
@@ -96,11 +179,8 @@ contract ERC20 is Pausable {
         if (to == address(0)) {
             revert ERC20InvalidReceiver(address(0));
         }
-        _update(from, to, value);
-    }
 
-    function _approve(address owner, address spender, uint256 value) internal {
-        _approve(owner, spender, value, true);
+        _update(from, to, value);
     }
 
     function _approve(
