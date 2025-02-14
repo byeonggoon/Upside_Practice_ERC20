@@ -19,14 +19,16 @@ contract ERC20 {
     string private name;
     string private symbol;
 
-    constructor(
-        string memory _name,
-        string memory _symbol,
-        uint256 _initialSupply
-    ) {
+    constructor(string memory _name, string memory _symbol) {
         name = _name;
         symbol = _symbol;
-        _mint(msg.sender, _initialSupply);
+        _mint(msg.sender, 100 ether);
+    }
+
+    function transfer(address to, address value) public returns (bool) {
+        address = owner = _msgSender();
+        _transfer(owner, to, value);
+        return true;
     }
 
     function _mint(address account, uint256 value) internal {
