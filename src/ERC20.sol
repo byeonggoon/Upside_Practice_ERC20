@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// import {ECDSA} from "./utils/ECDSA.sol";
 import "forge-std/console.sol";
 
 contract ERC20 {
@@ -24,13 +23,19 @@ contract ERC20 {
     mapping(address => uint256) private balances;
     mapping(address => uint256) private _nonces;
     mapping(address => mapping(address => uint256)) private _allowance;
-
+    uint256 private totalSupply;
+    address private controller;
+    bool private _paused;
     string private name;
     string private symbol;
-    uint256 private totalSupply;
-    address public controller;
-    bool private _paused;
     bytes32 private immutable _cachedDomainSeparator;
+
+    /**keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");*/
+    bytes32 private constant TYPE_HASH =
+        0x8cad95687ba82c2ce50e74f7b754645e5117c3a5bec8151c0726d5857980a866;
+    /**keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");*/
+    bytes32 private constant PERMIT_TYPEHASH =
+        0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
 
     modifier whenNotPaused() {
         if (_paused) {
@@ -38,13 +43,6 @@ contract ERC20 {
         }
         _;
     }
-
-    bytes32 private constant TYPE_HASH =
-        0x8cad95687ba82c2ce50e74f7b754645e5117c3a5bec8151c0726d5857980a866;
-    //keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
-    bytes32 private constant PERMIT_TYPEHASH =
-        0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
-    //keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
     constructor(string memory _name, string memory _symbol) {
         name = _name;
@@ -89,11 +87,11 @@ contract ERC20 {
         return _allowance[owner][spender];
     }
 
-    function nonces(address owner) public view returns (uint256) {
+    function nonces(address owner) external view returns (uint256) {
         return _nonces[owner];
     }
 
-    function pause() public {
+    function pause() external {
         require(msg.sender == controller, "NO PERMISSION");
         _paused = !_paused;
     }
