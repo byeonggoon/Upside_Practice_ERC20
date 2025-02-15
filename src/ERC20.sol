@@ -46,7 +46,7 @@ contract ERC20 {
         name = _name;
         symbol = _symbol;
         controller = msg.sender;
-        _mint(msg.sender, 100 ether);
+        _update(address(0), msg.sender, 100 ether);
         _cachedDomainSeparator = keccak256(
             abi.encode(TYPE_HASH, block.chainid, address(this))
         );
@@ -139,13 +139,6 @@ contract ERC20 {
             mstore(add(ptr, 0x22), structHash)
             digest := keccak256(ptr, 0x42)
         }
-    }
-
-    function _mint(address account, uint256 value) internal {
-        if (account == address(0)) {
-            revert ERC20InvalidAddress(address(0));
-        }
-        _update(address(0), account, value);
     }
 
     function _transfer(address from, address to, uint256 value) internal {
