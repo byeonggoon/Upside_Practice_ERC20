@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {Pausable} from "./utils/Pausable.sol";
 import {ECDSA} from "./utils/ECDSA.sol";
 import "forge-std/console.sol";
 
-contract ERC20 is Pausable {
+contract ERC20 {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(
         address indexed owner,
@@ -46,14 +45,20 @@ contract ERC20 is Pausable {
     bytes32 private immutable _cachedDomainSeparator;
     uint256 private immutable _cachedChainId;
     address private immutable _cachedThis;
+
+    modifier whenNotPaused() {
+        if (_paused) {
+            revert("PAUSED");
+        }
+        _;
+    }
+
     bytes32 private constant TYPE_HASH =
-        keccak256(
-            "EIP712Domain(string name,uint256 chainId,address verifyingContract)"
-        );
+        0x8cad95687ba82c2ce50e74f7b754645e5117c3a5bec8151c0726d5857980a866;
+    //keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
     bytes32 private constant PERMIT_TYPEHASH =
-        keccak256(
-            "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
-        );
+        0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
+    //keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
 
     constructor(string memory _name, string memory _symbol) {
         name = _name;
@@ -61,18 +66,15 @@ contract ERC20 is Pausable {
         controller = msg.sender;
         _mint(msg.sender, 100 ether);
         _cachedChainId = block.chainid;
-        _cachedDomainSeparator = keccak256(
-            abi.encode(TYPE_HASH, _hashedName, block.chainid, address(this))
-        ); //_buildDomainSeparator();
+        _cachedDomainSeparator = _buildDomainSeparator();
         _cachedThis = address(this);
-        _hashedName = keccak256(bytes(_name));
     }
 
     function transfer(
         address to,
         uint256 value
     ) public whenNotPaused returns (bool) {
-        address owner = _msgSender();
+        address owner = msg.sender;
         _transfer(owner, to, value);
         return true;
     }
@@ -82,14 +84,14 @@ contract ERC20 is Pausable {
         address to,
         uint256 value
     ) public whenNotPaused returns (bool) {
-        address spender = _msgSender();
+        address spender = msg.sender;
         _spendAllowance(from, spender, value);
         _transfer(from, to, value);
         return true;
     }
 
     function approve(address spender, uint256 value) public returns (bool) {
-        address owner = _msgSender();
+        address owner = msg.sender;
         _approve(owner, spender, value, true);
         return true;
     }
@@ -107,7 +109,7 @@ contract ERC20 is Pausable {
 
     function pause() public {
         require(msg.sender == controller, "NO PERMISSION");
-        _pause();
+        _paused = !_paused;
     }
 
     function permit(
@@ -137,9 +139,7 @@ contract ERC20 is Pausable {
         bytes32 hash = _toTypedDataHash(structHash);
 
         address signer = ECDSA.recover(hash, v, r, s);
-        if (signer != owner) {
-            revert("INVALID_SIGNER");
-        }
+        require(signer == owner && signer != address(0), "INVALID_SIGNER");
 
         _approve(owner, spender, value, true);
     }
@@ -159,10 +159,7 @@ contract ERC20 is Pausable {
     }
 
     function _buildDomainSeparator() private view returns (bytes32) {
-        return
-            keccak256(
-                abi.encode(TYPE_HASH, _hashedName, block.chainid, address(this))
-            );
+        return keccak256(abi.encode(TYPE_HASH, block.chainid, address(this)));
     }
 
     function _mint(address account, uint256 value) internal {
