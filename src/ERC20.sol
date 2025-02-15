@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {ECDSA} from "./utils/ECDSA.sol";
+// import {ECDSA} from "./utils/ECDSA.sol";
 import "forge-std/console.sol";
 
 contract ERC20 {
@@ -12,39 +12,25 @@ contract ERC20 {
         uint256 value
     );
 
-    error ERC20InsufficientBalance(
+    error ERC20InsufficientAmount(
         address sender,
-        uint256 balance,
-        uint256 needed
-    );
-    error ERC20InvalidReceiver(address recevier);
-    error ERC20InvalidSender(address sender);
-    error ERC20InsufficientAllowance(
-        address spender,
-        uint256 allowance,
+        uint256 amount,
         uint256 needed
     );
 
-    error ERC20InvalidApprover(address approver);
-    error ERC20InvalidSpender(address spender);
-    error InvalidAccountNonce(address account, uint256 currentNonce);
+    error ERC20InvalidAddress(address addr);
     error ERC2612ExpireedSignature(uint256 deadline);
-    error ERC2612InvalidSigner(address signer, address owner);
 
-    mapping(address account => uint256) private balances;
-    mapping(address account => uint256) private _nonces;
-    mapping(address account => mapping(address spender => uint256))
-        private _allowance;
+    mapping(address => uint256) private balances;
+    mapping(address => uint256) private _nonces;
+    mapping(address => mapping(address => uint256)) private _allowance;
 
     string private name;
     string private symbol;
     uint256 private totalSupply;
     address public controller;
     bool private _paused;
-    bytes32 private immutable _hashedName;
     bytes32 private immutable _cachedDomainSeparator;
-    uint256 private immutable _cachedChainId;
-    address private immutable _cachedThis;
 
     modifier whenNotPaused() {
         if (_paused) {
@@ -65,9 +51,9 @@ contract ERC20 {
         symbol = _symbol;
         controller = msg.sender;
         _mint(msg.sender, 100 ether);
-        _cachedChainId = block.chainid;
-        _cachedDomainSeparator = _buildDomainSeparator();
-        _cachedThis = address(this);
+        _cachedDomainSeparator = keccak256(
+            abi.encode(TYPE_HASH, block.chainid, address(this))
+        );
     }
 
     function transfer(
@@ -138,8 +124,9 @@ contract ERC20 {
 
         bytes32 hash = _toTypedDataHash(structHash);
 
-        address signer = ECDSA.recover(hash, v, r, s);
-        require(signer == owner && signer != address(0), "INVALID_SIGNER");
+        address signer = ecrecover(hash, v, r, s);
+        require(signer == owner, "INVALID_SIGNER");
+        require(signer != address(0));
 
         _approve(owner, spender, value, true);
     }
@@ -158,23 +145,19 @@ contract ERC20 {
         }
     }
 
-    function _buildDomainSeparator() private view returns (bytes32) {
-        return keccak256(abi.encode(TYPE_HASH, block.chainid, address(this)));
-    }
-
     function _mint(address account, uint256 value) internal {
         if (account == address(0)) {
-            revert ERC20InvalidReceiver(address(0));
+            revert ERC20InvalidAddress(address(0));
         }
         _update(address(0), account, value);
     }
 
     function _transfer(address from, address to, uint256 value) internal {
         if (from == address(0)) {
-            revert ERC20InvalidSender(address(0));
+            revert ERC20InvalidAddress(address(0));
         }
         if (to == address(0)) {
-            revert ERC20InvalidReceiver(address(0));
+            revert ERC20InvalidAddress(address(0));
         }
 
         _update(from, to, value);
@@ -186,11 +169,8 @@ contract ERC20 {
         uint256 value,
         bool emitEvent
     ) internal {
-        if (owner == address(0)) {
-            revert ERC20InvalidApprover(address(0));
-        }
-        if (spender == address(0)) {
-            revert ERC20InvalidSpender(address(0));
+        if (owner == address(0) || spender == address(0)) {
+            revert ERC20InvalidAddress(address(0));
         }
         _allowance[owner][spender] = value;
         if (emitEvent) {
@@ -206,7 +186,7 @@ contract ERC20 {
         uint256 currentAllowance = allowance(owner, spender);
         if (currentAllowance < type(uint256).max) {
             if (currentAllowance < value) {
-                revert ERC20InsufficientAllowance(
+                revert ERC20InsufficientAmount(
                     spender,
                     currentAllowance,
                     value
@@ -224,7 +204,7 @@ contract ERC20 {
         } else {
             uint256 fromBalance = balances[from];
             if (fromBalance < value) {
-                revert ERC20InsufficientBalance(from, fromBalance, value);
+                revert ERC20InsufficientAmount(from, fromBalance, value);
             }
             unchecked {
                 balances[from] = fromBalance - value;
